@@ -1,6 +1,7 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Form, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.schemas.admin import AdminLogin, AdminRegister
 from app.schemas import user as userSchema
 from app.schemas import book as bookSchema
@@ -208,6 +209,38 @@ async def station_register(
 @router.get("/get-users/", response_model=list[userSchema.UserResponse])
 async def read_users(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
     return db.query(user.User).offset(skip).limit(limit).all()
+
+
+@router.get("/get-vehicles/", response_model=list[userSchema.VehicleResponse])
+async def read_vehicles(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    return db.query(user.Vehicle).offset(skip).limit(limit).all()
+
+
+@router.get("/total-tolls/", status_code=status.HTTP_200_OK)
+async def get_total_tolls(db: db_depandancy):
+    try:
+        # Query all the booking slots from the database
+        total_tolls = db.query(user.Toll).all()
+        total_income = db.query(user.Toll).with_entities(
+            func.sum(user.Toll.amount)).scalar()
+
+        if not total_tolls:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No total found"
+            )
+
+        return {
+            "message": "Total Tolls retrieved successfully",
+            "total_tolls": total_tolls,
+            "total_income": total_income
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error retrieving slots: {e}"
+        )
 
 
 @router.delete("/delete-users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

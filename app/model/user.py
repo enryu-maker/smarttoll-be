@@ -7,9 +7,10 @@ import datetime
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
+    icon = Column(LargeBinary, nullable=True)
     name = Column(String)
-    email = Column(String, nullable=False, unique=True)
-    password = Column(String, nullable=False)
+    phone_number = Column(String(10), nullable=False, unique=True)
+    otp = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     is_active = Column(Boolean, default=True)
 

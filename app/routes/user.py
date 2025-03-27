@@ -30,14 +30,15 @@ user_dependancy = Annotated[dict, Depends(decode_access_token)]
 @router.post('/register/')
 async def register_user(
     name: str = Form(...),
-    email: str = Form(...),
-    password: str = Form(...),
+    phone_number: str = Form(...),
     db: Session = Depends(get_db)
 ):
+
+    otp = generate_otp()
     user = User(
         name=name,
-        email=email,
-        password=password,
+        phone_number=phone_number,
+        otp=otp
     )
 
     try:
@@ -75,41 +76,37 @@ async def register_user(
 @router.post("/login/", status_code=status.HTTP_200_OK)
 async def login(loginrequest: LoginRequest, db: Session = Depends(get_db)):
 
-    user = db.query(User).filter(User.email ==
-                                 loginrequest.email).first()
+    user = db.query(User).filter(User.phone_number ==
+                                 loginrequest.phone_number).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account not activated. Please verify your phone number first."
+        )
+
+    otp = generate_otp()
+    user.otp = otp
 
     try:
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account not activated. Please verify your phone number first."
-            )
-
-        if user.password != loginrequest.password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid password"
-            )
-
-        access = create_accesss_token(
-            user.name, user.id, timedelta(days=90))
-
-        return {
-            "message": "Login successful",
-            "access_token": access,
-        }
+        send_otp(otp=otp, mobile_number=loginrequest.phone_number)
     except Exception as e:
-
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to send OTP: {str(e)}"
         )
+
+    db.commit()
+    db.refresh(user)
+
+    return {"message": "OTP sent successfully. Please verify to proceed."}
 
 
 @router.post("/verify/", status_code=status.HTTP_201_CREATED)

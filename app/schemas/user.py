@@ -6,24 +6,25 @@ import base64
 
 class UserBase(BaseModel):
     name: str
-    email: str
-    password: str
+    phone_number: str = Field(..., max_length=10)
+    otp: Optional[int] = None
     is_active: Optional[bool] = True
 
 
 class UserCreate(UserBase):
-    pass
+    icon: Optional[bytes] = None
 
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
-    email: Optional[str] = None
-    password: Optional[str] = None
+    phone_number: Optional[str] = Field(None, max_length=10)
+    otp: Optional[int] = None
     is_active: Optional[bool] = None
 
 
 class UserResponse(UserBase):
     id: int
+    created_at: datetime
 
     class Config:
         orm_mode = True
@@ -35,8 +36,7 @@ class OTPVerify(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    phone_number: str
 
 # Schema for creating a vehicle
 

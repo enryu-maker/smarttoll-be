@@ -8,11 +8,11 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 import logging
 from app.database import Base, engine
-from app.routes import user, cng, admin, book, ai, toll
-
+from app.routes import user, cng, admin, book, ai, toll, stream
+from fastapi.staticfiles import StaticFiles
 # Create FastAPI app instance
 app = FastAPI()
-
+app.mount("/streams", StaticFiles(directory="streams"), name="streams")
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
@@ -56,6 +56,7 @@ app.include_router(admin.router)
 app.include_router(book.router)
 app.include_router(ai.router)
 app.include_router(toll.router)
+app.include_router(stream.router)
 
 
 @app.get('/')

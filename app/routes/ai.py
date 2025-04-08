@@ -6,7 +6,7 @@ import numpy as np
 from fastapi import APIRouter, WebSocket, Depends
 from starlette.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from app.model.user import Vehicle, Toll
+from app.model.user import Vehicle, Toll, Wallet
 from app.database import SessionLocale
 
 router = APIRouter()
@@ -57,9 +57,23 @@ def add_toll_if_vehicle_exists(plate_number: str, db: Session = Depends(get_db))
 
         # Insert Toll Entry
         toll_entry = Toll(user_id=vehicle.user_id,
-                          vehicle_id=vehicle.id, amount=100)  # Toll amount
+                          vehicle_id=vehicle.id, amount=50)  # Toll amount
         db.add(toll_entry)
         db.commit()
+
+        # deduct amount from wallet
+        user_wallet = db.query(Wallet).filter(
+            Wallet.user_id == vehicle.user_id).first()
+        if user_wallet:
+            if user_wallet.balance >= 50:
+                user_wallet.balance -= 50
+                db.commit()
+            else:
+                return {"error": "Insufficient balance in wallet"}
+        else:
+            return {"error": "Wallet not found for user"}
+        # Optionally, you can also refresh the wallet to get the updated balance
+        db.refresh(user_wallet)
 
         # Update last toll timestamp
         last_toll_time[plate_number] = current_time

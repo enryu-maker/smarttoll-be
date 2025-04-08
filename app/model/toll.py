@@ -9,6 +9,7 @@ class Camera(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
     camera_ip = Column(String, nullable=False, unique=True)
+    camera_port = Column(String, nullable=False)
     camera_location = Column(String, nullable=False)
 
 

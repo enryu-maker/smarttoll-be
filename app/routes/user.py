@@ -270,10 +270,21 @@ async def create_vehicle(
             detail="User not found"
         )
 
+    # Check if the vehicle already exists for the user
+    existing_vehicle = db.query(Vehicle).filter(
+        Vehicle.user_id == user['user_id'],
+        Vehicle.vehicle_number == vehicle.vehicle_number
+    ).first()
+
+    if existing_vehicle:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vehicle already present"
+        )
+
     # Create a new vehicle associated with the user
     try:
         new_vehicle = Vehicle(
-            # Set the user ID from the authenticated user
             user_id=user['user_id'],
             vehicle_number=vehicle.vehicle_number,
             vehicle_make=vehicle.vehicle_make,

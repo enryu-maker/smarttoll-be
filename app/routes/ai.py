@@ -84,7 +84,12 @@ def add_toll_if_vehicle_exists(plate_number: str, db: Session = Depends(get_db))
 
 
 def video_stream(db: Session):
-    cap = cv2.VideoCapture(0)  # Open webcam
+    # Use the RTSP URL to open the stream
+    rtsp_url = "rtsp://admin:123456@206.84.233.93:8001/stream1"
+    cap = cv2.VideoCapture(rtsp_url)  # Open RTSP stream
+
+    if not cap.isOpened():
+        raise ValueError("Failed to open RTSP stream.")
 
     while True:
         ret, frame = cap.read()
@@ -99,8 +104,11 @@ def video_stream(db: Session):
             cv2.putText(frame, f"Plate: {plate_number}", (50, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
+        # Encode the frame as JPEG
         _, jpeg = cv2.imencode('.jpg', frame)
         frame_bytes = jpeg.tobytes()
+
+        # Yield the frame as an HTTP response (streaming format)
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 

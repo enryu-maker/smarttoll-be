@@ -55,8 +55,8 @@ def send_otp(otp: str, mobile_number: str) -> bool:
         if response.status_code == 200:
             return True
         else:
-            print(f"Failed to send OTP. Status code: {
-                  response.status_code}, Response: {response.text}")
+            print(
+                f"Failed to send OTP. Status code: {response.status_code}, Response: {response.text}")
             return False
     except requests.exceptions.RequestException as e:
         print(f"An error occurred: {e}")

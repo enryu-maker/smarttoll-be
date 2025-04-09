@@ -35,7 +35,7 @@ def start_stream(rtsp_url: str, stream_name: str):
             print(f"FFmpeg failed: {stderr.decode()}")
             return {"message": "Failed to start stream", "error": stderr.decode()}
 
-        return {"message": "Streaming started!", "hls_url": f"http://localhost:8000/streams/{stream_name}/stream.m3u8"}
+        return {"message": "Streaming started!", "hls_url": f"http://103.194.228.109:8000/streams/{stream_name}/stream.m3u8"}
 
     except Exception as e:
         return {"message": "Error starting stream", "error": str(e)}

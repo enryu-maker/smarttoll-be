@@ -45,8 +45,7 @@ def generate_otp():
 
 
 def send_otp(otp: str, mobile_number: str) -> bool:
-    url = f'https://2factor.in/API/V1/74380642-1da4-11ef-8b60-0200cd936042/SMS/{
-        mobile_number}/{otp}'
+    url = f'https://2factor.in/API/V1/74380642-1da4-11ef-8b60-0200cd936042/SMS/{mobile_number}/{otp}'
     payload = {}
     headers = {}
 

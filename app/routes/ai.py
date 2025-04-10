@@ -87,6 +87,7 @@ def video_stream(db: Session):
     # Use the RTSP URL to open the stream
     rtsp_url = "rtsp://admin:123456@206.84.233.93:8001/stream1"
     cap = cv2.VideoCapture(rtsp_url)  # Open RTSP stream
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
         raise ValueError("Failed to open RTSP stream.")

@@ -118,6 +118,7 @@ async def live_feed(db: Session = Depends(get_db)):
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+
     while True:
         await asyncio.sleep(1)
         # WebSocket can be expanded to share plate updates if needed

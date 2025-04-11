@@ -82,7 +82,8 @@ def add_toll_if_vehicle_exists(plate_number: str, db: Session = Depends(get_db))
 
 
 def video_stream(db: Session):
-    cap = cv2.VideoCapture(0)  # Use webcam or RTSP stream
+    rtsp_url = "rtsp://admin:123456@206.84.233.93:8001/stream1"
+    cap = cv2.VideoCapture(rtsp_url)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():

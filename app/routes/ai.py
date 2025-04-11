@@ -1,6 +1,9 @@
 import cv2
 import easyocr
+import re
 import asyncio
+from asyncio import get_running_loop
+from functools import partial
 import datetime
 import numpy as np
 from fastapi import APIRouter, WebSocket, Depends
@@ -11,8 +14,6 @@ from app.database import SessionLocale
 
 router = APIRouter()
 reader = easyocr.Reader(['en'])  # English OCR
-plate_number = None  # Store detected plate number globally
-last_toll_time = {}  # Dictionary to store last toll entry timestamp per vehicle
 
 
 def get_db():
@@ -23,21 +24,31 @@ def get_db():
         db.close()
 
 
-async def detect_number_plate(frame, db: Session = Depends(get_db)):
-    global plate_number
+INDIAN_PLATE_REGEX = r'^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{3,4}$'
+
+
+async def detect_number_plate(frame, db: Session):
+    # Convert to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # OCR to detect text in the frame
-    plates = reader.readtext(gray)
+    # Optional: Denoise & enhance contrast
+    gray = cv2.bilateralFilter(gray, 11, 17, 17)
+    edges = cv2.Canny(gray, 30, 200)
 
-    for (bbox, text, prob) in plates:
-        if prob > 0.5:  # Confidence threshold
-            plate_number = text.strip().replace(" ", "")  # Clean the plate number
-            # Add toll if vehicle is found
-            add_toll_if_vehicle_exists(plate_number, db)
-            return text  # Return extracted number plate
+    # Run OCR
+    results = reader.readtext(gray)
 
-    plate_number = None
+    for (bbox, text, prob) in results:
+        # Clean up the text
+        cleaned = text.upper().replace(" ", "").replace("-", "").strip()
+
+        # Match Indian number plate pattern with decent confidence
+        if re.match(INDIAN_PLATE_REGEX, cleaned) and prob > 0.7:
+            # Offload DB write to background thread
+            loop = get_running_loop()
+            await loop.run_in_executor(None, partial(add_toll_if_vehicle_exists, cleaned, db))
+            return cleaned
+
     return None
 
 

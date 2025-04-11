@@ -11,6 +11,7 @@ class Camera(Base):
     camera_ip = Column(String, nullable=False, unique=True)
     camera_port = Column(String, nullable=False)
     camera_location = Column(String, nullable=False)
+    camera_url = Column(String, nullable=False)
 
 
 class Toll_Station(Base):

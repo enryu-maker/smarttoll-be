@@ -39,13 +39,15 @@ async def add_camera(
     camera_ip: str = Form(...),
     camera_location: str = Form(...),
     camera_port: str = Form(...),
+    camera_url: str = Form(...),
     db: Session = Depends(get_db)
 ):
     camera = Camera(
         name=name,
         camera_ip=camera_ip,
         camera_location=camera_location,
-        camera_port=camera_port
+        camera_port=camera_port,
+        camera_url=camera_url
     )
 
     try:

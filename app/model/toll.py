@@ -32,3 +32,11 @@ class Employee(Base):
     name = Column(String, nullable=False)
     number = Column(String, nullable=False, unique=True)
     password = Column(String, nullable=False)
+
+
+class Expenses(Base):
+    __tablename__ = 'expenses'
+    id = Column(Integer, primary_key=True)
+    date = Column(DateTime, default=datetime.datetime.utcnow)
+    amount = Column(Integer, nullable=False)
+    description = Column(String, nullable=False)

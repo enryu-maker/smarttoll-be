@@ -9,7 +9,7 @@ import numpy as np
 from fastapi import APIRouter, WebSocket, Depends
 from starlette.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from app.model.user import Vehicle, Toll, Wallet
+from app.model.user import Vehicle, Toll, Wallet, UnauthorizedVehicle
 from app.database import SessionLocale
 
 router = APIRouter()
@@ -77,7 +77,15 @@ def add_toll_if_vehicle_exists(plate_number: str, db: Session = Depends(get_db))
         db.commit()
         db.refresh(user_wallet)
         print(f"Toll added for {plate_number}")
-
+    else:
+        # Check if the vehicle is unauthorized
+        new_unauthorized_vehicle = UnauthorizedVehicle(
+            vehicle_number=plate_number
+        )
+        db.add(new_unauthorized_vehicle)
+        db.commit()
+        db.refresh(new_unauthorized_vehicle)
+        print(f"Vehicle {plate_number} not found in database.")
 # Streaming the video feed
 
 
@@ -124,3 +132,9 @@ async def websocket_endpoint(websocket: WebSocket):
         await asyncio.sleep(1)
         # WebSocket can be expanded to share plate updates if needed
         await websocket.send_json({"message": "WebSocket active"})
+
+
+@router.get('/unauthorized-vehicles')
+async def get_unauthorized_vehicles(db: Session = Depends(get_db)):
+    unauthorized_vehicles = db.query(UnauthorizedVehicle).all()
+    return unauthorized_vehicles

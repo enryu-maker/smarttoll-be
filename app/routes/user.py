@@ -202,6 +202,59 @@ async def update_wallet(
         )
 
 
+@router.get("/all-wallet-admin/")
+async def read_wallet(db: Session = Depends(get_db)):
+    # Get list of (Wallet, User.name) tuples
+    wallets = db.query(Wallet, User.name).all()
+    if wallets:
+        # Convert to list of dictionaries
+        wallet_list = [
+            {"wallet_id": wallet.id, "user_name": name, "balance": wallet.balance,
+                "user_id": wallet.user_id, "wallet_number": wallet.wallet_number}
+            for wallet, name in wallets
+        ]
+        return wallet_list
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="No wallets found"
+    )
+
+
+@router.put("/update-wallet-admin/", status_code=status.HTTP_200_OK)
+async def update_wallet(
+    user: int,
+    amount: int,
+    db: Session = Depends(get_db)
+):
+    # Fetch the wallet associated with the user ID
+    user_wallet = db.query(Wallet).filter(
+        Wallet.user_id == user).first()
+
+    if not user_wallet:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User wallet not found"
+        )
+
+    try:
+        # Update the wallet balance
+        user_wallet.balance = amount + user_wallet.balance
+        db.commit()
+        db.refresh(user_wallet)  # Optional: Refresh to get the updated data
+
+        return {
+            "message": "Wallet updated successfully",
+            "wallet_balance": user_wallet.balance
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred: {e}"
+        )
+
+
 @router.get("/nearby-station/")
 async def nearby_station(
     user_lat: float = Query(..., ge=-90, le=90),  # User's latitude
@@ -331,3 +384,52 @@ async def get_vehicle(
         )
 
     return db_vehicle
+
+# get all vehicles with there owner name
+
+
+@router.get("/all-vehicles")
+async def get_all_vehicles(db: Session = Depends(get_db)):
+    # Get list of (Vehicle, User.name) tuples
+    db_vehicles = db.query(Vehicle, User.name).join(User).all()
+
+    # Manually convert to the response model format
+    result = []
+    for vehicle, owner_name in db_vehicles:
+        result.append(
+            {
+                "vehicle_id": vehicle.id,
+                "vehicle_make": vehicle.vehicle_make,
+                "vehicle_model": vehicle.vehicle_model,
+                "vehicle_number": vehicle.vehicle_number,
+                "owner_name": owner_name
+
+            }
+        )
+    return result
+
+
+@router.delete("/vehicle/{vehicle_id}")
+async def delete_vehicle(
+    vehicle_id: int,
+    db: Session = Depends(get_db)
+):
+    # Check if the vehicle exists in the database
+    db_vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not db_vehicle:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Vehicle not found"
+        )
+
+    # Delete the vehicle
+    try:
+        db.delete(db_vehicle)
+        db.commit()
+        return {"message": "Vehicle deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to delete vehicle: {str(e)}"
+        )

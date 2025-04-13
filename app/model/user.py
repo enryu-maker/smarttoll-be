@@ -26,6 +26,12 @@ class Vehicle(Base):
     user = relationship('User', backref='vehicles')
 
 
+class UnauthorizedVehicle(Base):
+    __tablename__ = 'unauthorizedvehicles'
+    id = Column(Integer, primary_key=True)
+    vehicle_number = Column(String(50), nullable=False, unique=True)
+
+
 class Wallet(Base):
     __tablename__ = 'wallets'
     id = Column(Integer, primary_key=True)

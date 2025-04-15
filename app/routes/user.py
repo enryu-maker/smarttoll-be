@@ -230,6 +230,8 @@ async def update_wallet(
     user_wallet = db.query(Wallet).filter(
         Wallet.user_id == user).first()
 
+    print(user_wallet)
+
     if not user_wallet:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -204,16 +204,23 @@ async def update_wallet(
 
 @router.get("/all-wallet-admin/")
 async def read_wallet(db: Session = Depends(get_db)):
-    # Get list of (Wallet, User.name) tuples
-    wallets = db.query(Wallet, User.name).all()
+    # Proper join to avoid repetition
+    wallets = db.query(Wallet, User.name).join(
+        User, Wallet.user_id == User.id).all()
+
     if wallets:
-        # Convert to list of dictionaries
         wallet_list = [
-            {"wallet_id": wallet.id, "user_name": name, "balance": wallet.balance,
-                "user_id": wallet.user_id, "wallet_number": wallet.wallet_number}
+            {
+                "wallet_id": wallet.id,
+                "user_name": name,
+                "balance": wallet.balance,
+                "user_id": wallet.user_id,
+                "wallet_number": wallet.wallet_number
+            }
             for wallet, name in wallets
         ]
         return wallet_list
+
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="No wallets found"

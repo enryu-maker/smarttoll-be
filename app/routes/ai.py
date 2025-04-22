@@ -1,57 +1,58 @@
+import os
 import cv2
 import threading
 import time
 import re
+import uuid
+import shutil
 import numpy as np
-from fastapi import APIRouter, Depends, WebSocket
+from fastapi import APIRouter, WebSocket
 from starlette.responses import StreamingResponse
-from sqlalchemy.orm import Session
 from ultralytics import YOLO
 import easyocr
 
-from app.database import SessionLocale
-
 router = APIRouter()
+
+# Create folders if they don't exist
+os.makedirs("temp_frames", exist_ok=True)
+os.makedirs("detected_plates", exist_ok=True)
 
 # Shared variables
 latest_frame = None
 frame_lock = threading.Lock()
 plate_number_global = None
 
-# Initialize YOLO + OCR
+# Load YOLO model and EasyOCR
 model = YOLO("app/routes/best.pt")
 reader = easyocr.Reader(['en'])
 INDIAN_PLATE_REGEX = r'^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{3,4}$'
 
 
-def get_db():
-    db = SessionLocale()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# 🚀 Background thread for detection
+def save_frame_to_disk(frame):
+    filename = f"temp_frames/frame_{uuid.uuid4().hex}.jpg"
+    cv2.imwrite(filename, frame)
+    return filename
 
 
 def detection_thread():
-    global latest_frame, plate_number_global
+    global plate_number_global
     while True:
-        time.sleep(0.1)  # Tune as needed
-        frame_copy = None
+        time.sleep(0.5)  # Slight delay to avoid CPU overload
 
-        with frame_lock:
-            if latest_frame is not None:
-                frame_copy = latest_frame.copy()
-
-        if frame_copy is not None:
+        # Process saved frames
+        for filename in os.listdir("temp_frames"):
+            filepath = os.path.join("temp_frames", filename)
             try:
-                results = model.predict(
-                    source=frame_copy, save=False, conf=0.25)
+                frame = cv2.imread(filepath)
+                if frame is None:
+                    os.remove(filepath)
+                    continue
+
+                results = model.predict(source=frame, save=False, conf=0.25)
                 for result in results:
                     for box in result.boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                        crop = frame_copy[y1:y2, x1:x2]
+                        crop = frame[y1:y2, x1:x2]
                         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
                         gray = cv2.bilateralFilter(gray, 11, 17, 17)
                         ocr_results = reader.readtext(gray)
@@ -61,19 +62,25 @@ def detection_thread():
                             if re.match(INDIAN_PLATE_REGEX, cleaned) and prob > 0.7:
                                 plate_number_global = cleaned
                                 print("Detected:", cleaned)
+                                shutil.copy(
+                                    filepath, f"detected_plates/{cleaned}_{uuid.uuid4().hex}.jpg")
+
+                os.remove(filepath)
+
             except Exception as e:
                 print("Detection error:", e)
+                try:
+                    os.remove(filepath)
+                except:
+                    pass
 
 
-# Start detection thread
 threading.Thread(target=detection_thread, daemon=True).start()
-
-# 📹 Video stream
 
 
 def video_stream():
     global latest_frame
-    rtsp_url = "rtsp://206.84.233.93:8001/ch01.264?dev=1"
+    rtsp_url = "rtsp://192.168.20.2:554/ch01.264?dev=1"
     cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
@@ -83,17 +90,22 @@ def video_stream():
     while True:
         ret, frame = cap.read()
         if not ret:
-            break
+            continue
 
-        # Update shared frame
+        # Save frame to temp directory
+        save_frame_to_disk(frame)
+
+        # Update shared frame for live preview
         with frame_lock:
             latest_frame = frame.copy()
 
+        # Show plate number in live feed
+        display_frame = frame.copy()
         if plate_number_global:
-            cv2.putText(frame, f"Plate: {plate_number_global}", (50, 50),
+            cv2.putText(display_frame, f"Plate: {plate_number_global}", (50, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-        _, jpeg = cv2.imencode('.jpg', frame)
+        _, jpeg = cv2.imencode('.jpg', display_frame)
         frame_bytes = jpeg.tobytes()
 
         yield (b'--frame\r\n'
@@ -105,8 +117,6 @@ def video_stream():
 @router.get("/live")
 async def live_feed():
     return StreamingResponse(video_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
-
-# 🔁 Optional WebSocket
 
 
 @router.websocket("/ws")

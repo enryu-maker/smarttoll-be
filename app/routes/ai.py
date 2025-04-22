@@ -80,7 +80,7 @@ threading.Thread(target=detection_thread, daemon=True).start()
 
 def video_stream():
     global latest_frame
-    rtsp_url = "rtsp://192.168.20.2:554/ch01.264?dev=1"
+    rtsp_url = "rtsp://206.84.233.93:8001/ch01.264?dev=1"
     cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 

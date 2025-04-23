@@ -1,109 +1,132 @@
-import os
 import cv2
-import threading
-import time
-import re
-import uuid
-import shutil
-import numpy as np
-import torch
-import asyncio
-from queue import Queue
-from fastapi import APIRouter, WebSocket
-from starlette.responses import StreamingResponse
-from ultralytics import YOLO
 import easyocr
+import re
+import asyncio
+import datetime
+import numpy as np
+from functools import partial
+from asyncio import get_running_loop
+from fastapi import APIRouter, WebSocket, Depends
+from starlette.responses import StreamingResponse
+from sqlalchemy.orm import Session
+
+from ultralytics import YOLO
+
+from app.model.user import Vehicle, Toll, Wallet, UnauthorizedVehicle
+from app.database import SessionLocale
 
 router = APIRouter()
+reader = easyocr.Reader(['en'])
+plate_number_global = None  # For WebSocket broadcast
+last_toll_time = {}
 
-# Create folders if they don't exist
-os.makedirs("detected_plates", exist_ok=True)
-
-# Shared variables
-latest_frame = None
-frame_lock = threading.Lock()
-plate_number_global = None
-frame_queue = Queue(maxsize=10)
-
-# Load YOLO model and EasyOCR with GPU support if available
+# Load custom YOLOv8 model
 model = YOLO("app/routes/best.pt")
-if torch.cuda.is_available():
-    model.to("cuda")
-    reader = easyocr.Reader(['en'], gpu=True)
-else:
-    reader = easyocr.Reader(['en'], gpu=False)
 
 INDIAN_PLATE_REGEX = r'^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{3,4}$'
 
 
-def save_frame_to_memory(frame):
-    if not frame_queue.full():
-        frame_queue.put(frame)
+def get_db():
+    db = SessionLocale()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-def detection_thread():
+def detect_number_plate(frame: np.ndarray) -> str:
     global plate_number_global
-    while True:
-        time.sleep(0.1)  # Slight delay to avoid CPU overload
-        if frame_queue.empty():
-            continue
+    results = model.predict(source=frame, save=False, conf=0.25)
+    # print(results)
 
-        try:
-            frame = frame_queue.get()
-            results = model.predict(source=frame, save=False, conf=0.25)
-            for result in results:
-                for box in result.boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                    crop = frame[y1:y2, x1:x2]
-                    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-                    gray = cv2.bilateralFilter(gray, 11, 17, 17)
-                    gray = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                                 cv2.THRESH_BINARY, 11, 2)
-                    ocr_results = reader.readtext(
-                        gray, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+    for result in results:
+        for box in result.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            crop = frame[y1:y2, x1:x2]
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            gray = cv2.bilateralFilter(gray, 11, 17, 17)
+            ocr_results = reader.readtext(gray)
 
-                    for (_, text, prob) in ocr_results:
-                        cleaned = re.sub(r'[^A-Z0-9]', '', text.upper())
-                        if re.match(INDIAN_PLATE_REGEX, cleaned) and prob > 0.7:
-                            plate_number_global = cleaned
-                            print("Detected:", cleaned)
-                            filename = f"detected_plates/{cleaned}_{uuid.uuid4().hex}.jpg"
-                            cv2.imwrite(filename, frame)
-        except Exception as e:
-            print("Detection error:", e)
+            for (_, text, prob) in ocr_results:
+                cleaned = re.sub(r'[^A-Z0-9]', '', text.upper())
+                print(cleaned, prob)
+                if re.match(INDIAN_PLATE_REGEX, cleaned) and prob > 0.7:
+                    plate_number_global = cleaned
+                    print(f"Detected plate: {cleaned}")
+                    return cleaned
+
+    plate_number_global = None
+    return None
 
 
-threading.Thread(target=detection_thread, daemon=True).start()
+def process_plate_number(plate_number: str,  db: Session = Depends(get_db)):
+    global last_toll_time
+    print("i was here")
+    vehicle = db.query(Vehicle).filter(
+        Vehicle.vehicle_number == plate_number).first()
+
+    if vehicle:
+
+        current_time = datetime.datetime.utcnow()
+        if plate_number in last_toll_time:
+            time_diff = (current_time -
+                         last_toll_time[plate_number]).total_seconds()
+            if time_diff < 300:
+                return
+
+        toll_entry = Toll(user_id=vehicle.user_id,
+                          vehicle_id=vehicle.id, amount=50)
+        db.add(toll_entry)
+
+        wallet = db.query(Wallet).filter(
+            Wallet.user_id == vehicle.user_id).first()
+        if wallet:
+            if wallet.balance >= 50:
+                wallet.balance -= 50
+            else:
+                return
+        else:
+            return
+
+        db.commit()
+        db.refresh(wallet)
+        last_toll_time[plate_number] = current_time
+        print(f"Toll added for {plate_number}")
+
+    else:
+        existing = db.query(UnauthorizedVehicle).filter(
+            UnauthorizedVehicle.vehicle_number == plate_number).first()
+        if not existing:
+            entry = UnauthorizedVehicle(vehicle_number=plate_number)
+            db.add(entry)
+            db.commit()
+            db.refresh(entry)
+            print(f"Unauthorized vehicle detected: {plate_number}")
 
 
-def video_stream():
-    global latest_frame
-    rtsp_url = "rtsp://206.84.233.93:8001/ch01.264?dev=1"
-    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+def video_stream(db: Session = Depends(get_db)):
+    # rtsp_url = "rtsp://admin:123456@206.84.233.93:8001/stream1"
+    cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
         raise RuntimeError("Failed to open RTSP stream")
 
-    frame_count = 0
     while True:
         ret, frame = cap.read()
         if not ret:
-            continue
+            break
 
-        frame_count += 1
-        if frame_count % 3 == 0:  # Process every 3rd frame
-            save_frame_to_memory(frame)
+        try:
+            plate_number = detect_number_plate(frame)
+            if plate_number:
+                process_plate_number(plate_number, db)
+                cv2.putText(frame, f"Plate: {plate_number}", (50, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        except Exception as e:
+            print(f"Detection error: {e}")
 
-        with frame_lock:
-            latest_frame = frame.copy()
-
-        display_frame = frame.copy()
-        if plate_number_global:
-            cv2.putText(display_frame, f"Plate: {plate_number_global}", (50, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-        _, jpeg = cv2.imencode('.jpg', display_frame)
+        _, jpeg = cv2.imencode('.jpg', frame)
         frame_bytes = jpeg.tobytes()
 
         yield (b'--frame\r\n'
@@ -113,8 +136,8 @@ def video_stream():
 
 
 @router.get("/live")
-async def live_feed():
-    return StreamingResponse(video_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
+async def live_feed(db: Session = Depends(get_db)):
+    return StreamingResponse(video_stream(db), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @router.websocket("/ws")
@@ -124,3 +147,8 @@ async def websocket_endpoint(websocket: WebSocket):
         await asyncio.sleep(1)
         if plate_number_global:
             await websocket.send_json({"plate_number": plate_number_global})
+
+
+@router.get("/unauthorized-vehicles")
+async def get_unauthorized_vehicles(db: Session = Depends(get_db)):
+    return db.query(UnauthorizedVehicle).all()

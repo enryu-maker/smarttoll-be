@@ -106,7 +106,9 @@ def process_plate_number(plate_number: str,  db: Session = Depends(get_db)):
 
 def video_stream(db: Session = Depends(get_db)):
     # rtsp_url = "rtsp://admin:123456@206.84.233.93:8001/stream1"
-    cap = cv2.VideoCapture(0)
+    rtsp_url = "rtsp://206.84.233.93:8001/ch01.264?dev=1"
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+    cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():

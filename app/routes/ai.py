@@ -9,10 +9,10 @@ from asyncio import get_running_loop
 from fastapi import APIRouter, WebSocket, Depends
 from starlette.responses import StreamingResponse
 from sqlalchemy.orm import Session
-
+import requests
 from ultralytics import YOLO
 
-from app.model.user import Vehicle, Toll, Wallet, UnauthorizedVehicle
+from app.model.user import Vehicle, Toll, Wallet, UnauthorizedVehicle, User
 from app.database import SessionLocale
 
 router = APIRouter()
@@ -75,14 +75,34 @@ def process_plate_number(plate_number: str,  db: Session = Depends(get_db)):
                 return
 
         toll_entry = Toll(user_id=vehicle.user_id,
-                          vehicle_id=vehicle.id, amount=50)
+                          vehicle_id=vehicle.id,
+                          amount=50,
+                          )
         db.add(toll_entry)
 
         wallet = db.query(Wallet).filter(
             Wallet.user_id == vehicle.user_id).first()
+        user = db.query(User).filter(
+            User.id == vehicle.user_id).first()
         if wallet:
             if wallet.balance >= 50:
                 wallet.balance -= 50
+ # Send WhatsApp message
+                api_key = "14516d17beaf42f08b9814f31de4a055"
+                mobile = user.phone_number  # Assuming `user.mobile` has the number
+                msg = f"Hi {user.name}, ₹50 toll has been deducted for vehicle {plate_number} in Pimplegaon at {current_time.strftime('%d-%m-%Y %H:%M:%S')}."
+
+                url = f"http://waapi.happysms.in/wapp/v2/api/send"
+                payload = {
+                    "apikey": api_key,
+                    "mobile": mobile,
+                    "msg": msg
+                }
+                try:
+                    response = requests.get(url, params=payload)
+                    print(f"Message sent: {response.text}")
+                except Exception as e:
+                    print(f"Failed to send WhatsApp message: {str(e)}")
             else:
                 return
         else:

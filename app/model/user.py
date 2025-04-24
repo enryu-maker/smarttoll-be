@@ -45,7 +45,8 @@ class Wallet(Base):
 class Toll(Base):
     __tablename__ = 'tolls'
     id = Column(Integer, primary_key=True)
-    time = Column(DateTime, default=datetime.datetime.utcnow)
+    time = Column(
+        String, default=lambda: datetime.utcnow().strftime('%H:%M:%S'))
     user_id = Column(Integer, ForeignKey('users.id'))
     vehicle_id = Column(Integer, ForeignKey('vehicles.id'))
     amount = Column(Integer, nullable=False)

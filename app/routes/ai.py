@@ -87,7 +87,7 @@ def process_plate_number(plate_number: str,  db: Session = Depends(get_db)):
         if wallet:
             if wallet.balance >= 50:
                 wallet.balance -= 50
- # Send WhatsApp message
+
                 api_key = "14516d17beaf42f08b9814f31de4a055"
                 mobile = user.phone_number  # Assuming `user.mobile` has the number
                 msg = f"Hi {user.name}, ₹50 toll has been deducted for vehicle {plate_number} in Pimplegaon at {current_time.strftime('%d-%m-%Y %H:%M:%S')}."
